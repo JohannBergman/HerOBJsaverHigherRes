@@ -195,4 +195,5 @@ class HeroOBJExporter {
   }
 
   window.HeroOBJExporter = HeroOBJExporter
-})()
+
+export { HeroOBJExporter }
