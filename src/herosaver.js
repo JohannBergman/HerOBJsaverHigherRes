@@ -132,7 +132,7 @@ window.heroMeshes = () => {
 
 // export character as STL file with the surrounding cube/shell removed.
 // Same pipeline as saveStl, then the cube is stripped from the exported buffer.
-window.saveCleanStl = subdivisions => {
+window.saveCleanStl = (subdivisions = 2) => {
   const cleaned = removeCubeFromSTL(exportSTLBuffer(subdivisions))
   saveAs(new Blob([cleaned], { type: 'application/octet-stream' }), `${getName()}_clean.stl`)
 }
