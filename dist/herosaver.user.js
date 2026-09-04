@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         HerosaverHigherRes
 // @namespace    https://github.com/JohannBergman/HerOBJsaverHigherRes
-// @version      1.3.3
-// @description  Save Configuration and STLs from websites using the THREE.JS framework
+// @version      1.3.5
+// @description  Save Configuration and STLs from HeroForge
 // @author       reformagus
 // @homepageURL  https://github.com/JohannBergman/HerOBJsaverHigherRes
 // @match        *://*.heroforge.com/*
 // @grant        GM_registerMenuCommand
-// @run-at       document-start
+// @run-at       document-idle
 // ==/UserScript==
 
 (function () {
@@ -15,6 +15,8 @@
 
   const SRC =
     'https://cdn.jsdelivr.net/gh/JohannBergman/HerOBJsaverHigherRes@master/dist/herosaver.js';
+
+  const SUBDIVISIONS = 2;
 
   let bundleLoaded = false;
   let bundleLoading = false;
@@ -30,65 +32,82 @@
 
     bundleLoading = true;
 
-    const script = document.createElement('script');
-    script.src = SRC + '?_=' + Date.now();
+    // Wait for HeroForge to finish creating its character data.
+    setTimeout(() => {
+      const script = document.createElement('script');
 
-    script.onload = () => {
-      bundleLoaded = true;
-      console.log('HerOBJsaver loaded');
-      flushCalls();
-    };
+      script.src = `${SRC}?_=${Date.now()}`;
 
-    script.onerror = (error) => {
-      bundleLoading = false;
-      console.error('Failed to load HerOBJsaver:', error);
-    };
+      script.onload = () => {
+        bundleLoaded = true;
+        console.log('Herosaver bundle loaded');
+        flushCalls();
+      };
 
-    (document.head || document.documentElement).appendChild(script);
+      script.onerror = (error) => {
+        bundleLoading = false;
+        console.error('Failed to load Herosaver bundle:', error);
+      };
+
+      (document.head || document.documentElement).appendChild(script);
+    }, 2000);
   }
 
-  function run(functionName) {
+  function run(functionName, subdivisions = SUBDIVISIONS) {
     if (!bundleLoaded) {
-      pendingCalls.push(functionName);
+      pendingCalls.push({
+        functionName,
+        subdivisions
+      });
+
       loadBundle();
       return;
     }
 
-    injectCall(functionName);
+    injectCall(functionName, subdivisions);
   }
 
   function flushCalls() {
-    while (pendingCalls.length) {
-      injectCall(pendingCalls.shift());
+    while (pendingCalls.length > 0) {
+      const call = pendingCalls.shift();
+      injectCall(call.functionName, call.subdivisions);
     }
   }
 
-  function injectCall(functionName) {
+  function injectCall(functionName, subdivisions = SUBDIVISIONS) {
+    const safeFunctionName = JSON.stringify(functionName);
+    const safeSubdivisions = Number(subdivisions);
+
     const script = document.createElement('script');
 
     script.textContent = `
-      if (typeof window.${functionName} === 'function') {
-        window.${functionName}();
-      } else {
-        console.error('Herosaver function not found: ${functionName}');
+      try {
+        const functionName = ${safeFunctionName};
+        const exportFunction = window[functionName];
+
+        if (typeof exportFunction !== 'function') {
+          throw new Error(
+            'Herosaver function not found: window.' + functionName
+          );
+        }
+
+        console.log(
+          'Starting ' + functionName + '(' + ${safeSubdivisions} + ')'
+        );
+
+        exportFunction(${safeSubdivisions});
+
+        console.log(
+          'Finished ' + functionName + '(' + ${safeSubdivisions} + ')'
+        );
+      } catch (error) {
+        console.error('Herosaver export failed:', error);
       }
     `;
 
     (document.head || document.documentElement).appendChild(script);
     script.remove();
   }
-
-  GM_registerMenuCommand('Herosaver: Save STL', () => {
-    run('saveCleanStl');
-  });
-
-  GM_registerMenuCommand('Herosaver: Save OBJ', () => {
-    run('saveObj');
-  });
-
-  GM_registerMenuCommand('Herosaver: Save JSON', () => {
-    run('saveJson');
-  });
 
   function removeForeignSaveStlButtons() {
     const panel = document.getElementById('herosaver-panel');
@@ -97,23 +116,51 @@
       .querySelectorAll(
         'button, a, [role="button"], input[type="button"], input[type="submit"]'
       )
-      .forEach((el) => {
-        if (panel && panel.contains(el)) return;
+      .forEach((element) => {
+        if (panel && panel.contains(element)) return;
 
-        const label = (el.textContent || el.value || '').trim();
+        const label = (
+          element.textContent ||
+          element.value ||
+          ''
+        ).trim();
 
         if (label === 'Save STL') {
-          el.remove();
+          element.remove();
         }
       });
   }
 
+  function makeButton(label, callback, primary) {
+    const button = document.createElement('button');
+
+    button.textContent = label;
+
+    button.style.cssText = [
+      'cursor:pointer',
+      'border:0',
+      'border-radius:6px',
+      'padding:7px 12px',
+      'font-size:13px',
+      'font-weight:600',
+      'text-align:left',
+      primary ? 'background:#2563eb' : 'background:#374151',
+      'color:#fff'
+    ].join(';');
+
+    button.addEventListener('click', callback);
+
+    return button;
+  }
+
   function injectPanel() {
     if (document.getElementById('herosaver-panel')) return;
+    if (!document.body) return;
 
     const panel = document.createElement('div');
 
     panel.id = 'herosaver-panel';
+
     panel.style.cssText = [
       'position:fixed',
       'right:16px',
@@ -131,57 +178,65 @@
     ].join(';');
 
     const title = document.createElement('div');
+
     title.textContent = 'Herosaver';
+
     title.style.cssText =
       'color:#9ca3af;font-weight:600;font-size:11px;letter-spacing:.05em;text-transform:uppercase;margin-bottom:2px';
 
     panel.appendChild(title);
 
-    function makeButton(label, functionName, primary) {
-      const button = document.createElement('button');
+    panel.appendChild(
+      makeButton(
+        'Save STL',
+        () => run('saveCleanStl', SUBDIVISIONS),
+        true
+      )
+    );
 
-      button.textContent = label;
-      button.style.cssText = [
-        'cursor:pointer',
-        'border:0',
-        'border-radius:6px',
-        'padding:7px 12px',
-        'font-size:13px',
-        'font-weight:600',
-        'text-align:left',
-        primary ? 'background:#2563eb' : 'background:#374151',
-        'color:#fff'
-      ].join(';');
+    panel.appendChild(
+      makeButton(
+        'Save OBJ',
+        () => run('saveObj', SUBDIVISIONS),
+        false
+      )
+    );
 
-      button.addEventListener('click', () => {
-        run(functionName);
-      });
-
-      return button;
-    }
-
-    panel.appendChild(makeButton('Save STL', 'saveCleanStl', true));
-    panel.appendChild(makeButton('Save OBJ', 'saveObj', false));
-    panel.appendChild(makeButton('Save JSON', 'saveJson', false));
+    panel.appendChild(
+      makeButton(
+        'Save JSON',
+        () => run('saveJson', SUBDIVISIONS),
+        false
+      )
+    );
 
     document.body.appendChild(panel);
   }
+
+  GM_registerMenuCommand('Herosaver: Save STL', () => {
+    run('saveCleanStl', SUBDIVISIONS);
+  });
+
+  GM_registerMenuCommand('Herosaver: Save OBJ', () => {
+    run('saveObj', SUBDIVISIONS);
+  });
+
+  GM_registerMenuCommand('Herosaver: Save JSON', () => {
+    run('saveJson', SUBDIVISIONS);
+  });
 
   function init() {
     injectPanel();
     removeForeignSaveStlButtons();
 
-    [1000, 2500, 5000].forEach((ms) => {
-      setTimeout(removeForeignSaveStlButtons, ms);
+    [1000, 2500, 5000].forEach((delay) => {
+      setTimeout(removeForeignSaveStlButtons, delay);
     });
   }
 
   if (document.body) {
     init();
   } else {
-    window.addEventListener('DOMContentLoaded', init);
+    window.addEventListener('DOMContentLoaded', init, { once: true });
   }
-
-  // Begin loading the bundle immediately.
-  loadBundle();
 })();
