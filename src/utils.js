@@ -169,14 +169,6 @@ export const process = (object3d, smooth, mirroredPose) => {
           return
         }
 
-        // Older Three.js (used by HeroForge) may not set isMesh/isSkinnedMesh flags —
-        // fall back to checking the constructor name and skeleton presence.
-        const isMesh = mesh.isMesh || (mesh.geometry && mesh.geometry.isBufferGeometry)
-        if (!isMesh) {
-          console.warn('Not recognized as a mesh:', mesh.name)
-          return
-        }
-
         const geometry = mesh.geometry
         // Old Three.js versions may not set isBufferGeometry — check for position attribute instead
         if (!geometry || !(geometry.isBufferGeometry || (geometry.attributes && geometry.attributes.position))) {
@@ -226,7 +218,7 @@ export const process = (object3d, smooth, mirroredPose) => {
         console.warn('Stack:', e.stack)
       }
     })
-    console.log('DEBUG: Returning Group')
+    console.log('DEBUG: Returning Group with', group.children.length, 'meshes')
     return group
   } catch (e) {
     console.error('Fatal error in process function:', e.message)
