@@ -117,34 +117,42 @@ const bakeSkinnedVertex = (() => {
   }
 })()
 
+object3d.traverse(mesh => {
+  // ...
+  const isMesh = mesh.isMesh || (mesh.geometry && mesh.geometry.isBufferGeometry)
+  if (!isMesh) return
+
+  const geometry = mesh.geometry
+  // ...
+  const vertices = newGeometry.getAttribute('position')  // ← Error happens here
+
+The code checks if something is a mesh, but the check isn't strict enough. Some nodes in the Three.js scene tree aren't actual meshes and don't have a proper geometry.
+
+Fix: Add a more defensive check in utils.js:
+JavaScript
+
 export const process = (object3d, smooth, mirroredPose) => {
   const material = new MeshBasicMaterial()
   const group = new Group()
 
-  // Transformation applied after world space: rotate 90° on X and scale ×10
-  // to match the coordinate system expected by STL/OBJ tools.
   const mrot = new Matrix4().makeRotationX(90 * Math.PI / 180)
   const msca = new Matrix4().makeScale(10, 10, 10)
   const mTransform = new Matrix4().multiplyMatrices(msca, mrot)
 
-  // Make sure every node's world matrix is current before we read matrixWorld below.
   object3d.updateMatrixWorld(true)
 
-  console.log('Entering object3d.traverse')
-  // traverse (not traverseVisible): HeroForge keeps some exported meshes flagged
-  // invisible, so traverseVisible would silently drop parts of the model.
   object3d.traverse(mesh => {
-    console.log('Visited:', mesh)
-    // Older Three.js (used by HeroForge) may not set isMesh/isSkinnedMesh flags —
-    // fall back to checking the constructor name and skeleton presence.
-    const isMesh = mesh.isMesh || (mesh.geometry && mesh.geometry.isBufferGeometry)
-    if (!isMesh) return
+    // More defensive check: ensure geometry exists AND has position attribute
+    if (!mesh.geometry || !mesh.geometry.getAttribute) return
+    
+    const posAttr = mesh.geometry.getAttribute('position')
+    if (!posAttr) return
 
-    const geometry = mesh.geometry
-    // Old Three.js versions may not set isBufferGeometry — check for position attribute instead
-    if (!geometry || !(geometry.isBufferGeometry || (geometry.attributes && geometry.attributes.position))) {
-      console.warn('Geometry type unsupported', mesh.name, geometry)
-      return
+    const isSkinned = mesh.isSkinnedMesh ||
+      (mesh.skeleton && mesh.skeleton.bones && mesh.skeleton.bones.length > 0)
+
+    const newGeometry = mesh.geometry.clone()
+    const vertices = newGeometry.getAttribute('position')
     }
 
     const isSkinned = mesh.isSkinnedMesh ||
