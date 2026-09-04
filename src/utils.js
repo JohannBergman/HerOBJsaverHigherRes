@@ -118,144 +118,119 @@ const bakeSkinnedVertex = (() => {
 })()
 
 export const process = (object3d, smooth, mirroredPose) => {
-  const material = new MeshBasicMaterial()
-  const group = new Group()
+  try {
+    const material = new MeshBasicMaterial()
+    const group = new Group()
 
-  // Transformation applied after world space: rotate 90° on X and scale ×10
-  // to match the coordinate system expected by STL/OBJ tools.
-  const mrot = new Matrix4().makeRotationX(90 * Math.PI / 180)
-  const msca = new Matrix4().makeScale(10, 10, 10)
-  const mTransform = new Matrix4().multiplyMatrices(msca, mrot)
+    // Transformation applied after world space: rotate 90° on X and scale ×10
+    // to match the coordinate system expected by STL/OBJ tools.
+    const mrot = new Matrix4().makeRotationX(90 * Math.PI / 180)
+    const msca = new Matrix4().makeScale(10, 10, 10)
+    const mTransform = new Matrix4().multiplyMatrices(msca, mrot)
 
-  // Make sure every node's world matrix is current before we read matrixWorld below.
-  object3d.updateMatrixWorld(true)
+    // Make sure every node's world matrix is current before we read matrixWorld below.
+    object3d.updateMatrixWorld(true)
 
-  console.log('Entering object3d.traverse')
-  // traverse (not traverseVisible): HeroForge keeps some exported meshes flagged
-  // invisible, so traverseVisible would silently drop parts of the model.
-  object3d.traverse(mesh => {
-    console.log('Visited:', mesh)
-    
-    try {
-      // Triple-check: ensure this is actually a mesh with geometry
-      if (!mesh || !mesh.geometry) return
-      
-      // Verify geometry has the getAttribute method
-      if (typeof mesh.geometry.getAttribute !== 'function') return
-      
-      // Try to get position attribute - if it fails, skip this mesh
-      let posAttr
+    console.log('Entering object3d.traverse')
+    // traverse (not traverseVisible): HeroForge keeps some exported meshes flagged
+    // invisible, so traverseVisible would silently drop parts of the model.
+    object3d.traverse(mesh => {
       try {
-        posAttr = mesh.geometry.getAttribute('position')
-      } catch (e) {
-        console.warn('Failed to get position attribute:', e)
-        return
-      }
-      
-      if (!posAttr) return
-
-      // Older Three.js (used by HeroForge) may not set isMesh/isSkinnedMesh flags —
-      // fall back to checking the constructor name and skeleton presence.
-      const isMesh = mesh.isMesh || (mesh.geometry && mesh.geometry.isBufferGeometry)
-      if (!isMesh) return
-
-      const geometry = mesh.geometry
-      // Old Three.js versions may not set isBufferGeometry — check for position attribute instead
-      if (!geometry || !(geometry.isBufferGeometry || (geometry.attributes && geometry.attributes.position))) {
-        console.warn('Geometry type unsupported', mesh.name, geometry)
-        return
-      }
-
-      const isSkinned = mesh.isSkinnedMesh ||
-        (mesh.skeleton && mesh.skeleton.bones && mesh.skeleton.bones.length > 0)
-
-      const newGeometry = geometry.clone()
-      const vertices = newGeometry.getAttribute('position')
-
-      for (let i = 0; i < vertices.count; i++) {
-        let vertex
-
-        if (isSkinned) {
-          // Manually bake bone transforms (compatible with older Three.js without boneTransform()),
-          // then apply the mesh's own world matrix to place the baked vertex in scene space.
-          vertex = bakeSkinnedVertex(mesh, i).applyMatrix4(mesh.matrixWorld)
-        } else {
-          // Static mesh: just apply its world transform
-          vertex = new Vector3(vertices.getX(i), vertices.getY(i), vertices.getZ(i))
-            .applyMatrix4(mesh.matrixWorld)
+        console.log('Visited:', mesh.name || 'unnamed', 'Type:', mesh.type)
+        
+        // Safety checks: ensure mesh and geometry exist
+        if (!mesh || typeof mesh !== 'object') {
+          console.warn('Node is not a valid object:', mesh)
+          return
+        }
+        
+        if (!mesh.geometry) {
+          console.warn('Node has no geometry:', mesh.name)
+          return
+        }
+        
+        // Verify geometry is an object with getAttribute method
+        if (typeof mesh.geometry !== 'object' || typeof mesh.geometry.getAttribute !== 'function') {
+          console.warn('Geometry is not a proper BufferGeometry or lacks getAttribute:', mesh.name, mesh.geometry)
+          return
+        }
+        
+        // Safely try to get position attribute
+        let posAttr
+        try {
+          posAttr = mesh.geometry.getAttribute('position')
+        } catch (e) {
+          console.warn('Error getting position attribute from', mesh.name, ':', e.message)
+          return
+        }
+        
+        if (!posAttr) {
+          console.warn('No position attribute found on', mesh.name)
+          return
         }
 
-        vertex.applyMatrix4(mTransform)
-        vertices.setXYZ(i, vertex.x, vertex.y, vertex.z)
+        // Older Three.js (used by HeroForge) may not set isMesh/isSkinnedMesh flags —
+        // fall back to checking the constructor name and skeleton presence.
+        const isMesh = mesh.isMesh || (mesh.geometry && mesh.geometry.isBufferGeometry)
+        if (!isMesh) {
+          console.warn('Not recognized as a mesh:', mesh.name)
+          return
+        }
+
+        const geometry = mesh.geometry
+        // Old Three.js versions may not set isBufferGeometry — check for position attribute instead
+        if (!geometry || !(geometry.isBufferGeometry || (geometry.attributes && geometry.attributes.position))) {
+          console.warn('Geometry type unsupported', mesh.name, geometry)
+          return
+        }
+
+        const isSkinned = mesh.isSkinnedMesh ||
+          (mesh.skeleton && mesh.skeleton.bones && mesh.skeleton.bones.length > 0)
+
+        const newGeometry = geometry.clone()
+        const vertices = newGeometry.getAttribute('position')
+
+        for (let i = 0; i < vertices.count; i++) {
+          let vertex
+
+          if (isSkinned) {
+            // Manually bake bone transforms (compatible with older Three.js without boneTransform()),
+            // then apply the mesh's own world matrix to place the baked vertex in scene space.
+            vertex = bakeSkinnedVertex(mesh, i).applyMatrix4(mesh.matrixWorld)
+          } else {
+            // Static mesh: just apply its world transform
+            vertex = new Vector3(vertices.getX(i), vertices.getY(i), vertices.getZ(i))
+              .applyMatrix4(mesh.matrixWorld)
+          }
+
+          vertex.applyMatrix4(mTransform)
+          vertices.setXYZ(i, vertex.x, vertex.y, vertex.z)
+        }
+
+        vertices.needsUpdate = true
+
+        let finalGeometry = newGeometry
+
+        if (mirroredPose === true) {
+          finalGeometry = mirror(finalGeometry)
+        }
+
+        if (smooth && mesh.name !== 'baseRim' && mesh.name !== 'base') {
+          finalGeometry = subdivide(finalGeometry, smooth)
+        }
+
+        console.log('Successfully processed mesh:', mesh.name)
+        group.add(new Mesh(finalGeometry, material))
+      } catch (e) {
+        console.warn('Error processing individual mesh:', mesh.name || 'unknown', e.message)
+        console.warn('Stack:', e.stack)
       }
-
-      vertices.needsUpdate = true
-
-      let finalGeometry = newGeometry
-
-      if (mirroredPose === true) {
-        finalGeometry = mirror(finalGeometry)
-      }
-
-      if (smooth && mesh.name !== 'baseRim' && mesh.name !== 'base') {
-        finalGeometry = subdivide(finalGeometry, smooth)
-      }
-
-      console.log('DEBUG: MESH_START')
-      console.log(mesh.material)
-
-      if (Array.isArray(mesh.material)) {
-        mesh.material.forEach((m, i) => {
-          console.log('material', i, m)
-          console.log('map', m.map)
-          console.log('uniforms', m.uniforms)
-        })
-      } else {
-        console.log('map', mesh.material.map)
-        console.log('uniforms', mesh.material.uniforms)
-      }
-      console.log('DEBUG: MESH_MID')
-      const u = mesh.material.uniforms
-
-      for (const k in u) {
-        const v = u[k].value
-
-        if (v && v.isTexture) { console.log(k, v) }
-      }
-      console.log('DEBUG: MESH_MID_2')
-      console.log('Mesh:', mesh.name)
-      console.log('UV attribute:', finalGeometry.getAttribute('uv'))
-      console.log('Material:', mesh.material)
-      console.log('Texture map:', mesh.material?.map)
-      console.log('DEBUG: MATERIAL')
-      console.log('uniforms:', mesh.material.uniforms)
-      console.log('blindlySetUniforms', mesh.material.blindlySetUniforms)
-      console.log('shaderInfo', mesh.material.shaderInfo)
-      console.log('DEBUG: UNIFORM')
-      console.log('Material type:', mesh.material.type)
-      console.log('Uniforms:', mesh.material.uniforms)
-      console.log('DEBUG: TEXTURE')
-      const tex = mesh.material.uniforms.colorAtlasMap.value
-      console.log('Texture:', tex)
-      console.log('Image:', tex.image)
-      console.log('Source:', tex.image?.src)
-      console.log('Width:', tex.image?.width)
-      console.log('Height:', tex.image?.height)
-      console.log('DEBUG: UV')
-      console.log('UV:', mesh.material.uniforms.uvPosScl.value)
-      console.log('DEBUG: COLORATLAS')
-      console.log('tex:', tex)
-      console.log('tex.source:', tex.source)
-      console.log('tex.__webglTexture:', tex.__webglTexture)
-      console.log('tex.isRenderTargetTexture:', tex.isRenderTargetTexture)
-      console.log('tex.isTexture:', tex.isTexture)
-      console.log('DEBUG: MESH_END')
-
-      group.add(new Mesh(finalGeometry, material))
-    } catch (e) {
-      console.warn('Error processing mesh:', mesh.name, e)
-    }
-  })
-  console.log('DEBUG: Returning Group')
-  return group
+    })
+    console.log('DEBUG: Returning Group')
+    return group
+  } catch (e) {
+    console.error('Fatal error in process function:', e.message)
+    console.error('Stack:', e.stack)
+    throw e
+  }
 }
