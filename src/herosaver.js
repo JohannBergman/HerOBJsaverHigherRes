@@ -95,7 +95,7 @@ window.debugSkin = () => {
 
 // export character as STL file, cube included (binary to avoid JS string length
 // limits on large models). Kept for callers that want the raw, uncleaned export.
-window.saveStl = subdivisions => {
+window.saveStl = (subdivisions = 3) => {
   saveAs(new Blob([exportSTLBuffer(subdivisions)], { type: 'application/octet-stream' }), `${getName()}.stl`)
 }
 
@@ -132,7 +132,7 @@ window.heroMeshes = () => {
 
 // export character as STL file with the surrounding cube/shell removed.
 // Same pipeline as saveStl, then the cube is stripped from the exported buffer.
-window.saveCleanStl = (subdivisions = 2) => {
+window.saveCleanStl = (subdivisions = 3) => {
   const cleaned = removeCubeFromSTL(exportSTLBuffer(subdivisions))
   saveAs(new Blob([cleaned], { type: 'application/octet-stream' }), `${getName()}_clean.stl`)
 }
