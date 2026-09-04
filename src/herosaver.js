@@ -95,7 +95,7 @@ window.debugSkin = () => {
 
 // export character as STL file, cube included (binary to avoid JS string length
 // limits on large models). Kept for callers that want the raw, uncleaned export.
-window.saveStl = (subdivisions = 3) => {
+window.saveStl = (subdivisions = 2) => {
   saveAs(new Blob([exportSTLBuffer(subdivisions)], { type: 'application/octet-stream' }), `${getName()}.stl`)
 }
 
