@@ -1,17 +1,23 @@
 // ==UserScript==
-// @name         Herosaver
+// @name         HerosaverHigherRes
 // @namespace    https://github.com/JohannBergman/HerOBJsaverHigherRes
-// @version      1.3.2
+// @version      1.3.3
 // @description  Save Configuration and STLs from websites using the THREE.JS framework
 // @author       reformagus
 // @homepageURL  https://github.com/JohannBergman/HerOBJsaverHigherRes
 // @match        *://*.heroforge.com/*
 // @grant        GM_registerMenuCommand
-// @run-at       document-idle
-// @downloadURL  https://raw.githubusercontent.com/Dromlius/HerOBJsaver/master/dist/herosaver.user.js
-// @updateURL    https://raw.githubusercontent.com/Dromlius/HerOBJsaver/master/dist/herosaver.user.js
+// @run-at       document-start
 // ==/UserScript==
 
+// Load the bundle as a script
+const script = document.createElement('script');
+script.src = 'https://raw.githubusercontent.com/JohannBergman/HerOBJsaverHigherRes/master/dist/herosaver.js';
+script.onload = () => {
+  console.log('HerOBJsaver loaded');
+  // Functions should now be available as window.saveStl, window.saveCleanStl, etc.
+};
+document.documentElement.appendChild(script);
 (function () {
   'use strict'
 
@@ -97,4 +103,15 @@
 
   if (document.body) init()
   else window.addEventListener('DOMContentLoaded', init)
-})()
+})()// ==UserScript==
+// @name        New script
+// @namespace   Violentmonkey Scripts
+// @icon
+// @version     1.0.0
+//
+// @match       *://example.org/*
+// @grant       none
+//
+// @author      -
+// @description
+// ==/UserScript==
